@@ -8,49 +8,33 @@
     body{background:#10151d;color:#f3f6fc;font:16px system-ui;margin:0;padding:20px}
     main{max-width:680px;margin:auto}h1{color:#ffce36}
     button{background:#ffce36;border:0;border-radius:12px;padding:14px;font-weight:700;font-size:16px;cursor:pointer}
-    button:disabled{opacity:.45;cursor:default}input{box-sizing:border-box;width:100%;background:#10151d;color:#f3f6fc;border:1px solid #a7b7cb;border-radius:8px;padding:12px;font:inherit;margin:8px 0 12px}
+    button:disabled{opacity:.45;cursor:default}
     #status{margin:16px 0;color:#b8c5d5}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-    .tile,section{background:#202a37;border-radius:16px;padding:16px;min-width:0}section{margin:16px 0}
+    .tile{background:#202a37;border-radius:16px;padding:16px;min-width:0}
     .val{font-size:29px;font-weight:700;overflow-wrap:anywhere}.unit,small{color:#a7b7cb;font-size:14px}
     pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#202a37;padding:12px;border-radius:12px;font-size:12px}
-    .warn{color:#ffce36}p{line-height:1.5}#temperature-status,#config-status{overflow-wrap:anywhere}
+    .warn{color:#ffce36}p{line-height:1.5}#temperature-status{overflow-wrap:anywhere}
   </style>
 </head>
 <body><main>
   <h1>MiniBee • FlyController</h1>
-  <p>Telemetria Bluetooth • Temperatura do motor pelo NTC externo</p>
+  <p>Telemetria Bluetooth • Somente leitura</p>
   <button id="connect">Conectar por Bluetooth</button>
   <button id="disconnect" disabled>Desconectar</button>
   <div id="status" role="status">Desconectado</div>
   <div class="grid" id="tiles"></div>
   <p id="temperature-status" class="warn" role="status">Aguardando leitura do NTC externo.</p>
-  <section aria-labelledby="thermal-title">
-    <h2 id="thermal-title">Sensor do motor</h2>
-    <p>Selecione o NTC externo na placa com o motor desarmado. A temperatura do ESC continua sendo recebida separadamente pelo CAN.</p>
-    <form id="ntc-form">
-      <label for="pin">PIN de configuração do FlyController</label>
-      <input id="pin" type="password" maxlength="32" autocomplete="off" spellcheck="false" placeholder="Digite o PIN da sua placa">
-      <button id="use-ntc" type="submit" disabled>Usar NTC externo</button>
-    </form>
-    <p id="config-status" role="status">Conecte para consultar a configuração.</p>
-    <small>A alteração é salva na placa. Os limites de temperatura existentes são preservados.</small>
-  </section>
   <h3>Última mensagem</h3><pre id="raw">Aguardando...</pre>
-  <small>Percentuais de carga são estimativas do FlyController, não necessariamente do BMS. Não envia comandos de aceleração. No iPhone use Bluefy; página deve estar em HTTPS.</small>
+  <small>Percentuais de carga são estimativas do FlyController, não necessariamente do BMS. Não altera configurações nem envia comandos ao motor. No iPhone use Bluefy; página deve estar em HTTPS.</small>
 </main><script>
 'use strict';
 const UUID = {
   nus: '6e400001-b5a3-f393-e0a9-e50e24dcca9e',
   tx: '6e400003-b5a3-f393-e0a9-e50e24dcca9e',
   control: 'd4cf0001-9b9d-4bfd-8f7f-40c6989d3ea9',
-  info: 'd4cf0002-9b9d-4bfd-8f7f-40c6989d3ea9',
-  telemetry: 'd4cf0003-9b9d-4bfd-8f7f-40c6989d3ea9',
-  cmd: 'd4cf0004-9b9d-4bfd-8f7f-40c6989d3ea9',
-  rsp: 'd4cf0005-9b9d-4bfd-8f7f-40c6989d3ea9'
+  telemetry: 'd4cf0003-9b9d-4bfd-8f7f-40c6989d3ea9'
 };
-const OP = {auth: 0x01, get: 0x10, set: 0x11};
-const THERMAL_GROUP = 1, THERMAL_BYTES = 17, SOURCE_OFFSET = 16;
-const MAX_AGE = 5000, REQUEST_TIMEOUT = 5000;
+const MAX_AGE = 5000;
 const fields = [
   ['Carga calculada','%',0],['Carga por tensão','%',1],['Tensão da bateria','V',2],
   ['Corrente ESC','A',10],['Potência','kW',3],['RPM','rpm',9],['Acelerador','%',4],
@@ -62,15 +46,10 @@ el('tiles').innerHTML = fields.map(([name, unit], i) =>
   `<div class="tile"><div class="unit">${name}</div><div class="val" id="v${i}">—</div><div class="unit">${unit}</div></div>`).join('');
 let session = null, connecting = false;
 const fresh = time => time !== null && Date.now() - time <= MAX_AGE;
-function isDisarmed(s) {
-  if (s.binary) return fresh(s.binaryAt) && !s.binary.armed;
-  return fresh(s.last) && s.csv && s.csv[12] === 'DISARMED';
-}
 function updateControls() {
-  const s = session, connected = !!s && s.device.gatt.connected;
+  const connected = !!session && session.device.gatt.connected;
   el('connect').disabled = connecting || connected;
   el('disconnect').disabled = !connected;
-  el('use-ntc').disabled = !connected || s.setup || s.busy || !s.cmd || !s.config || !isDisarmed(s);
 }
 function clearReadings() {
   fields.forEach((_, i) => { el('v'+i).textContent = '—'; });
@@ -91,12 +70,11 @@ function renderMotor(s) {
   }
   el('v8').textContent = origin === 'ntc' && valid ? String(value) : '—';
   el('temperature-status').textContent = origin === 'can'
-    ? 'Origem recebida: CAN. Selecione NTC externo na placa para ler a temperatura do motor.'
+    ? 'A placa está enviando temperatura do motor pelo CAN. A leitura do NTC externo não foi recebida.'
     : origin === 'ntc'
       ? valid ? 'Origem recebida: NTC externo.' : 'Origem recebida: NTC externo — leitura indisponível. Verifique o sensor e a conexão.'
       : 'Origem da temperatura não confirmada. Aguardando leitura do NTC externo.';
   if (protectionOff) el('temperature-status').textContent += ' Proteção térmica do motor suspensa pela placa.';
-  if (s.config && s.config[SOURCE_OFFSET] !== 1) el('temperature-status').textContent += ' A placa ainda está configurada para CAN.';
 }
 function show(line, s = session) {
   if (!s || session !== s) return false;
@@ -131,57 +109,12 @@ function onBinary(e, s) {
   if (v.byteLength < 36 || v.getUint8(0) !== 1) return;
   const origin = v.getUint8(6);
   s.binary = {
-    armed: !!(v.getUint8(1) & 1), protectionOff: !!(v.getUint8(1) & 0x40),
+    protectionOff: !!(v.getUint8(1) & 0x40),
     valid: ((v.getUint8(5) >> 4) & 3) === 3,
     origin: origin === 2 ? 'ntc' : origin === 1 ? 'can' : '',
     value: v.getInt32(28, true) / 1000
   };
   s.binaryAt = Date.now(); renderMotor(s); updateControls();
-}
-const responseErrors = {
-  1: 'PIN incorreto ou sessão não autenticada.', 2: 'Este firmware não oferece essa operação.',
-  3: 'A placa rejeitou a configuração.', 4: 'Desarme o motor antes de alterar a fonte.',
-  5: 'A placa está ocupada. Tente novamente depois.', 6: 'Recurso não encontrado na placa.'
-};
-function onResponse(e, s) {
-  if (session !== s || !s.pending) return;
-  const v = e.target.value, p = s.pending;
-  if (v.byteLength < 4 || v.byteLength !== 4 + v.getUint8(3) ||
-      v.getUint8(0) !== p.op || v.getUint8(1) !== p.seq) return;
-  clearTimeout(p.timer); s.pending = null;
-  const status = v.getUint8(2);
-  if (status !== 0) p.reject(Error(responseErrors[status] || 'Resposta inesperada da placa.'));
-  else p.resolve(new Uint8Array(v.buffer, v.byteOffset + 4, v.getUint8(3)).slice());
-}
-function request(s, op, payload) {
-  if (session !== s || !s.device.gatt.connected || !s.cmd) return Promise.reject(Error('Bluetooth desconectado.'));
-  if (s.pending) return Promise.reject(Error('Aguarde a operação em andamento.'));
-  const seq = s.seq; s.seq = seq === 255 ? 1 : seq + 1;
-  const frame = new Uint8Array(3 + payload.length);
-  frame.set([op, seq, payload.length]); frame.set(payload, 3);
-  let writePromise;
-  const reply = new Promise((resolve, reject) => {
-    const pending = {op, seq, resolve, reject, timer: null};
-    const fail = error => {
-      if (s.pending !== pending) return;
-      clearTimeout(pending.timer); s.pending = null; reject(error);
-    };
-    s.pending = pending;
-    pending.timer = setTimeout(() => fail(Error('Sem confirmação da placa. Reconecte para consultar a configuração antes de tentar novamente.')), REQUEST_TIMEOUT);
-    try {
-      const write = s.cmd.writeValueWithResponse ? s.cmd.writeValueWithResponse(frame) : s.cmd.writeValue(frame);
-      writePromise = Promise.resolve(write);
-      writePromise.catch(fail);
-    } catch (error) { fail(error); }
-  });
-  // A notification can arrive before the GATT write acknowledgement.
-  // Wait for both before starting the next GATT operation.
-  return Promise.all([writePromise, reply]).then(([, response]) => response);
-}
-async function readThermal(s) {
-  const config = await request(s, OP.get, Uint8Array.of(THERMAL_GROUP));
-  if (config.length < THERMAL_BYTES || config[SOURCE_OFFSET] > 1) throw Error('Este firmware não oferece seleção de NTC compatível.');
-  return config.slice(0, THERMAL_BYTES);
 }
 async function subscribe(s, characteristic, handler) {
   const listener = e => handler(e, s);
@@ -193,11 +126,10 @@ async function subscribe(s, characteristic, handler) {
 function endSession(s) {
   for (const [characteristic, listener] of s.listeners) characteristic.removeEventListener('characteristicvaluechanged', listener);
   s.device.removeEventListener('gattserverdisconnected', s.disconnect);
-  if (s.pending) { clearTimeout(s.pending.timer); s.pending.reject(Error('Bluetooth desconectado.')); s.pending = null; }
   if (session !== s) return;
-  session = null; el('pin').value = ''; clearReadings();
+  session = null; clearReadings();
   el('raw').textContent = 'Aguardando...'; el('status').textContent = 'Desconectado';
-  el('config-status').textContent = 'Conecte para consultar a configuração.'; updateControls();
+  updateControls();
 }
 async function connect() {
   if (connecting || session) return;
@@ -208,7 +140,7 @@ async function connect() {
     el('status').textContent = 'Procurando FlyController...';
     const device = await navigator.bluetooth.requestDevice({filters: [{services: [UUID.nus]}], optionalServices: [UUID.control]});
     s = {device, buffer: '', decoder: new TextDecoder(), last: null, csv: null, binary: null,
-      binaryAt: null, config: null, cmd: null, pending: null, seq: 1, busy: false, setup: true, listeners: []};
+      binaryAt: null, listeners: []};
     session = s; s.disconnect = () => endSession(s);
     device.addEventListener('gattserverdisconnected', s.disconnect);
     const server = await device.gatt.connect();
@@ -218,58 +150,20 @@ async function connect() {
     el('status').textContent = s.csv ? 'Recebendo telemetria' : 'Conectado — aguardando dados';
     try {
       const control = await server.getPrimaryService(UUID.control);
-      const info = await (await control.getCharacteristic(UUID.info)).readValue();
-      if (info.byteLength < 4 || info.getUint8(0) !== 1 || !(info.getUint16(2, true) & 4)) {
-        throw Error('O firmware não oferece seleção de NTC compatível.');
-      }
-      const cmd = await control.getCharacteristic(UUID.cmd);
-      await subscribe(s, await control.getCharacteristic(UUID.rsp), onResponse);
       await subscribe(s, await control.getCharacteristic(UUID.telemetry), onBinary);
-      s.cmd = cmd; s.config = await readThermal(s);
-      el('config-status').textContent = s.config[SOURCE_OFFSET] === 1
-        ? 'Fonte configurada na placa: NTC externo.' : 'Fonte configurada na placa: CAN. Use o botão para selecionar NTC externo.';
     } catch (error) {
       if (session !== s || !device.gatt.connected) throw error;
-      s.cmd = null; s.config = null;
-      el('config-status').textContent = 'Seleção por Bluetooth indisponível: ' + error.message + ' Configure NTC pelo aplicativo do FlyController ou pelo portal Wi-Fi, se disponível no firmware.';
+      // Older firmware can still supply read-only telemetry over NUS.
     }
     if (session !== s) throw Error('Bluetooth desconectado.');
-    s.setup = false; renderMotor(s);
+    renderMotor(s);
   } catch (error) {
     if (s && session === s) { endSession(s); if (s.device.gatt.connected) s.device.gatt.disconnect(); }
     el('status').textContent = 'Erro: ' + error.message;
   } finally { connecting = false; updateControls(); }
 }
-async function useNtc(event) {
-  event.preventDefault();
-  const s = session;
-  if (!s || s.setup || s.busy || !s.cmd || !s.config) return;
-  if (!isDisarmed(s)) { el('config-status').textContent = 'Aguarde telemetria recente com o motor desarmado.'; return; }
-  const pin = new TextEncoder().encode(el('pin').value);
-  if (!pin.length || pin.length > 32) { el('config-status').textContent = 'Digite o PIN de configuração da placa (até 32 bytes).'; return; }
-  el('pin').value = ''; s.busy = true; updateControls();
-  el('config-status').textContent = 'Autenticando e consultando a configuração...';
-  try {
-    await request(s, OP.auth, pin);
-    const current = await readThermal(s);
-    if (!isDisarmed(s)) throw Error('O motor não está desarmado ou a telemetria expirou.');
-    // Preserve all four thermal limits; change only motorTempSource.
-    const payload = new Uint8Array(1 + THERMAL_BYTES);
-    payload[0] = THERMAL_GROUP; payload.set(current, 1); payload[1 + SOURCE_OFFSET] = 1;
-    await request(s, OP.set, payload);
-    s.config = await readThermal(s);
-    if (s.config[SOURCE_OFFSET] !== 1) throw Error('A placa não confirmou NTC externo.');
-    el('config-status').textContent = 'NTC externo confirmado na configuração da placa. A leitura do sensor é indicada acima.';
-    renderMotor(s);
-  } catch (error) {
-    if (session === s) el('config-status').textContent = 'Alteração não confirmada: ' + error.message;
-  } finally {
-    pin.fill(0); s.busy = false; if (session === s) updateControls();
-  }
-}
 el('connect').onclick = connect;
 el('disconnect').onclick = () => { const s = session; if (s) { endSession(s); if (s.device.gatt.connected) s.device.gatt.disconnect(); } };
-el('ntc-form').onsubmit = useNtc;
 setInterval(() => {
   const s = session;
   if (!s) return;
