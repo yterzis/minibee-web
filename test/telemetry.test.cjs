@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
 const html = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
-const source = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+const source = html.match(/<script id="telemetry-app">([\s\S]*?)<\/script>/)[1];
 const UUID = {
   nus:'6e400001-b5a3-f393-e0a9-e50e24dcca9e', tx:'6e400003-b5a3-f393-e0a9-e50e24dcca9e',
   control:'d4cf0001-9b9d-4bfd-8f7f-40c6989d3ea9', telemetry:'d4cf0003-9b9d-4bfd-8f7f-40c6989d3ea9'
