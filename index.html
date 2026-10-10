@@ -45,6 +45,7 @@
 </main><script id="startup-diagnostic">
 // Keep this diagnostic separate so a syntax error in the application is visible.
 window.addEventListener('error', function(event) {
+  if (window.__minibeeStarted && event.message === 'Script error.') return;
   var status = document.getElementById('status');
   status.textContent = 'Erro de JavaScript: ' + (event.message || 'falha ao executar a página') +
     (event.lineno ? ' (linha ' + event.lineno + ')' : '');
@@ -55,7 +56,9 @@ window.addEventListener('unhandledrejection', function(event) {
     (reason && reason.message ? reason.message : String(reason));
 });
 </script><script id="telemetry-app">
+(function () {
 'use strict';
+try {
 const UUID = {
   nus: '6e400001-b5a3-f393-e0a9-e50e24dcca9e',
   tx: '6e400003-b5a3-f393-e0a9-e50e24dcca9e',
@@ -116,7 +119,13 @@ function show(line, s = session) {
 }
 function onData(e, s) {
   if (session !== s) return;
-  s.buffer += s.decoder.decode(e.target.value, {stream: true});
+  if (s.decoder) {
+    s.buffer += s.decoder.decode(e.target.value, {stream: true});
+  } else {
+    // NUS sentences contain ASCII; some iOS browser versions lack TextDecoder.
+    const bytes = e.target.value;
+    for (let i = 0; i < bytes.byteLength; i++) s.buffer += String.fromCharCode(bytes.getUint8(i));
+  }
   const lines = s.buffer.split(/\r?\n/); s.buffer = lines.pop();
   for (const line of lines) {
     // A new prefix also recovers a frame after noise or a lost fragment.
@@ -165,7 +174,7 @@ async function connect() {
     if (!navigator.bluetooth) throw Error('Este navegador não oferece Web Bluetooth. No iPhone, abra no Bluefy.');
     el('status').textContent = 'Procurando FlyController...';
     const device = await navigator.bluetooth.requestDevice({filters: [{services: [UUID.nus]}], optionalServices: [UUID.control]});
-    s = {device, buffer: '', decoder: new TextDecoder(), last: null, csv: null, binary: null,
+    s = {device, buffer: '', decoder: typeof TextDecoder === 'function' ? new TextDecoder() : null, last: null, csv: null, binary: null,
       binaryAt: null, listeners: []};
     session = s; s.disconnect = () => endSession(s);
     device.addEventListener('gattserverdisconnected', s.disconnect);
@@ -188,6 +197,7 @@ async function connect() {
     el('status').textContent = 'Erro: ' + error.message;
   } finally { connecting = false; updateControls(); }
 }
+window.__minibeeStarted = true;
 el('status').textContent = 'Desconectado';
 updateControls();
 el('connect').onclick = connect;
@@ -200,4 +210,8 @@ setInterval(() => {
   }
   renderMotor(s); updateControls();
 }, 2000);
+} catch (error) {
+  document.getElementById('status').textContent = 'Falha ao iniciar a página: ' + error.message;
+}
+})();
 </script></body></html>

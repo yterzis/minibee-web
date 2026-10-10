@@ -46,10 +46,13 @@ function harness(options={}) {
   const context = vm.createContext({
     document:{getElementById:id=>{assert.ok(nodes.has(id),`Missing DOM element ${id}`);return nodes.get(id);}},
     navigator:{bluetooth:{requestDevice:async args=>{selections++;chooser=args;return device;}}},
-    TextDecoder,Uint8Array,DataView,Date:{now:()=>now},setInterval:fn=>intervals.push(fn)
+    window:{},TextDecoder:options.noDecoder ? undefined : TextDecoder,Uint8Array,DataView,Date:{now:()=>now},setInterval:fn=>intervals.push(fn)
   });
-  vm.runInContext(source,context);
-  const api = vm.runInContext('({connect,getSession:()=>session})',context);
+  if (options.browserGlobals) vm.runInContext('const UUID = {}; const session = {}; const el = 1; const fields = [];', context);
+  const instrumented = source.replace('} catch (error) {\n  document', 'globalThis.__testApi = {connect,getSession:()=>session};\n} catch (error) {\n  document');
+  vm.runInContext(instrumented,context);
+  const api = context.__testApi;
+  assert.ok(api, nodes.get('status').textContent);
   return {api,nodes,requested,device,chars,context,
     get writes(){return writes;},get selections(){return selections;},get chooser(){return chooser;},get session(){return api.getSession();},
     csv:text=>chars[UUID.tx].emit('characteristicvaluechanged',view(new TextEncoder().encode(text))),
@@ -133,4 +136,18 @@ test('disconnect/reconnect clears partial frames and old values without duplicat
 test('repeated connect clicks reuse the active session',async()=>{
   const h=harness();await Promise.all([h.api.connect(),h.api.connect()]);await h.api.connect();
   assert.equal(h.selections,1);assert.equal(h.nodes.get('connect').disabled,true);assert.equal(h.writes,0);
+});
+
+test('browser globals do not conflict with application initialization', async()=>{
+  const h=harness({browserGlobals:true});
+  assert.equal(h.nodes.get('connect').disabled,false);
+  await h.api.connect(); h.csv(sentence('28.999'));
+  assert.equal(h.nodes.get('v8').textContent,'28');
+});
+test('ASCII telemetry works when the browser has no TextDecoder', async()=>{
+  const h=harness({noDecoder:true}); await h.api.connect();
+  const line=sentence('28.999');
+  h.csv(line.slice(0,37)); h.csv(line.slice(37));
+  assert.equal(h.nodes.get('v8').textContent,'28');
+  assert.equal(h.nodes.get('v13').textContent,'4125');
 });
