@@ -97,7 +97,7 @@ test('multiple sentences, noise and overflow recover without shifting fields',as
 });
 test('binary validity, source, units and suspended protection are honored',async()=>{
   const h=harness();await h.api.connect();h.csv(sentence());h.binary();
-  assert.equal(h.nodes.get('v8').textContent,'42.5');
+  assert.equal(h.nodes.get('v8').textContent,'42');
   h.binary({valid:2,flags:0x40});assert.equal(h.nodes.get('v8').textContent,'—');
   assert.match(h.nodes.get('temperature-status').textContent,/suspensa/);
   h.binary({origin:1});assert.equal(h.nodes.get('v8').textContent,'—');
@@ -119,7 +119,7 @@ test('stale readings are cleared and binary health cannot be replaced by CSV',as
   const h=harness();await h.api.connect();h.csv(sentence());h.binary();h.tick(6000);
   assert.equal(h.nodes.get('v8').textContent,'—');assert.equal(h.nodes.get('v9').textContent,'—');
   h.csv(sentence());assert.equal(h.nodes.get('v8').textContent,'—');
-  h.binary();assert.equal(h.nodes.get('v8').textContent,'42.5');
+  h.binary();assert.equal(h.nodes.get('v8').textContent,'42');
 });
 test('disconnect/reconnect clears partial frames and old values without duplicate listeners',async()=>{
   const h=harness();await h.api.connect();h.csv(sentence());h.csv('$XCTOD,80');

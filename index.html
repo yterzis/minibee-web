@@ -68,7 +68,7 @@ function renderMotor(s) {
     origin = s.csv[8]; value = s.csv[7];
     valid = value !== '' && Number.isFinite(Number(value));
   }
-  el('v8').textContent = origin === 'ntc' && valid ? String(value) : '—';
+  el('v8').textContent = origin === 'ntc' && valid ? String(Math.trunc(Number(value))) : '—';
   el('temperature-status').textContent = origin === 'can'
     ? 'A placa está enviando temperatura do motor pelo CAN. A leitura do NTC externo não foi recebida.'
     : origin === 'ntc'
