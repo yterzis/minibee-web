@@ -19,14 +19,42 @@
 <body><main>
   <h1>MiniBee • FlyController</h1>
   <p>Telemetria Bluetooth • Somente leitura</p>
-  <button id="connect">Conectar por Bluetooth</button>
+  <button id="connect" disabled>Conectar por Bluetooth</button>
   <button id="disconnect" disabled>Desconectar</button>
-  <div id="status" role="status">Desconectado</div>
-  <div class="grid" id="tiles"></div>
+  <div id="status" role="status">JavaScript ainda não iniciou. Se esta mensagem permanecer, confira os bloqueios de scripts no Bluefy e recarregue a página.</div>
+  <noscript><p class="warn">JavaScript está desativado. Ative a execução de JavaScript no navegador para conectar por Bluetooth.</p></noscript>
+  <div class="grid" id="tiles">
+    <div class="tile"><div class="unit">Carga calculada</div><div class="val" id="v0">—</div><div class="unit">%</div></div>
+    <div class="tile"><div class="unit">Carga por tensão</div><div class="val" id="v1">—</div><div class="unit">%</div></div>
+    <div class="tile"><div class="unit">Tensão da bateria</div><div class="val" id="v2">—</div><div class="unit">V</div></div>
+    <div class="tile"><div class="unit">Corrente ESC</div><div class="val" id="v3">—</div><div class="unit">A</div></div>
+    <div class="tile"><div class="unit">Potência</div><div class="val" id="v4">—</div><div class="unit">kW</div></div>
+    <div class="tile"><div class="unit">RPM</div><div class="val" id="v5">—</div><div class="unit">rpm</div></div>
+    <div class="tile"><div class="unit">Acelerador</div><div class="val" id="v6">—</div><div class="unit">%</div></div>
+    <div class="tile"><div class="unit">Potência limite</div><div class="val" id="v7">—</div><div class="unit">%</div></div>
+    <div class="tile"><div class="unit">Temperatura motor (NTC)</div><div class="val" id="v8">—</div><div class="unit">°C</div></div>
+    <div class="tile"><div class="unit">Temperatura ESC</div><div class="val" id="v9">—</div><div class="unit">°C</div></div>
+    <div class="tile"><div class="unit">Estado</div><div class="val" id="v10">—</div><div class="unit"></div></div>
+    <div class="tile"><div class="unit">Temperatura BMS</div><div class="val" id="v11">—</div><div class="unit">°C</div></div>
+    <div class="tile"><div class="unit">Célula mínima</div><div class="val" id="v12">—</div><div class="unit">mV</div></div>
+    <div class="tile"><div class="unit">Célula máxima</div><div class="val" id="v13">—</div><div class="unit">mV</div></div>
+  </div>
   <p id="temperature-status" class="warn" role="status">Aguardando leitura do NTC externo.</p>
   <h3>Última mensagem</h3><pre id="raw">Aguardando...</pre>
   <small>Percentuais de carga são estimativas do FlyController, não necessariamente do BMS. Não altera configurações nem envia comandos ao motor. No iPhone use Bluefy; página deve estar em HTTPS.</small>
-</main><script>
+</main><script id="startup-diagnostic">
+// Keep this diagnostic separate so a syntax error in the application is visible.
+window.addEventListener('error', function(event) {
+  var status = document.getElementById('status');
+  status.textContent = 'Erro de JavaScript: ' + (event.message || 'falha ao executar a página') +
+    (event.lineno ? ' (linha ' + event.lineno + ')' : '');
+});
+window.addEventListener('unhandledrejection', function(event) {
+  var reason = event.reason;
+  document.getElementById('status').textContent = 'Erro de JavaScript: ' +
+    (reason && reason.message ? reason.message : String(reason));
+});
+</script><script id="telemetry-app">
 'use strict';
 const UUID = {
   nus: '6e400001-b5a3-f393-e0a9-e50e24dcca9e',
@@ -42,8 +70,6 @@ const fields = [
   ['Estado','',12],['Temperatura BMS','°C',13],['Célula mínima','mV',14],['Célula máxima','mV',15]
 ];
 const el = id => document.getElementById(id);
-el('tiles').innerHTML = fields.map(([name, unit], i) =>
-  `<div class="tile"><div class="unit">${name}</div><div class="val" id="v${i}">—</div><div class="unit">${unit}</div></div>`).join('');
 let session = null, connecting = false;
 const fresh = time => time !== null && Date.now() - time <= MAX_AGE;
 function updateControls() {
@@ -162,6 +188,8 @@ async function connect() {
     el('status').textContent = 'Erro: ' + error.message;
   } finally { connecting = false; updateControls(); }
 }
+el('status').textContent = 'Desconectado';
+updateControls();
 el('connect').onclick = connect;
 el('disconnect').onclick = () => { const s = session; if (s) { endSession(s); if (s.device.gatt.connected) s.device.gatt.disconnect(); } };
 setInterval(() => {
