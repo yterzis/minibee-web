@@ -22,9 +22,8 @@ function harness(options={}) {
   const nodes = new Map(), intervals = [], requested = [];
   let now = 1000, writes = 0, selections = 0, chooser;
   for (const id of [...html.matchAll(/id="([^"]+)"/g)].map(m=>m[1])) {
-    nodes.set(id,{textContent:'',innerHTML:'',disabled:false});
+    nodes.set(id,{textContent:/^v\d+$/.test(id)?'—':'',innerHTML:'',disabled:false});
   }
-  for (let i=0;i<14;i++) nodes.set('v'+i,{textContent:'—'});
   const chars = Object.fromEntries([UUID.tx, UUID.telemetry].map(id=>[id,new Events()]));
   for (const ch of Object.values(chars)) {
     ch.startNotifications = async()=>{
@@ -86,8 +85,8 @@ test('every split point waits for the newline, including the final cell field',a
   const full=sentence();
   for(let i=1;i<full.length;i++){
     const h=harness();await h.api.connect();
-    h.csv(full.slice(0,i));assert.equal(h.nodes.get('v13').textContent,'—',`early split ${i}`);
-    h.csv(full.slice(i));assert.equal(h.nodes.get('v13').textContent,'4125',`split ${i}`);
+    h.csv(full.slice(0,i));assert.equal(h.session.csv,null,`early split ${i}`);
+    h.csv(full.slice(i));assert.equal(h.session.csv[15],'4125',`split ${i}`);
     assert.equal(h.nodes.get('v8').textContent,'42');assert.equal(h.writes,0);
   }
 });
@@ -96,7 +95,7 @@ test('multiple sentences, noise and overflow recover without shifting fields',as
   h.csv('noise'+sentence()+sentence('43','ntc','34'));
   assert.equal(h.nodes.get('v8').textContent,'43');assert.equal(h.nodes.get('v9').textContent,'34');
   h.csv('x'.repeat(3000));h.csv(sentence('44'));
-  assert.equal(h.nodes.get('v8').textContent,'44');assert.equal(h.nodes.get('v13').textContent,'4125');
+  assert.equal(h.nodes.get('v8').textContent,'44');assert.equal(h.session.csv[15],'4125');
 });
 test('binary validity, source, units and suspended protection are honored',async()=>{
   const h=harness();await h.api.connect();h.csv(sentence());h.binary();
@@ -114,7 +113,7 @@ test('unsupported or short binary packets do not replace a valid CSV reading',as
 test('firmware without binary service remains read-only and displays NUS data',async()=>{
   for(const options of [{oldFirmware:true},{noBinary:true}]){
     const h=harness(options);await h.api.connect();h.csv(sentence());
-    assert.equal(h.nodes.get('v8').textContent,'42');assert.equal(h.nodes.get('v13').textContent,'4125');
+    assert.equal(h.nodes.get('v8').textContent,'42');assert.equal(h.session.csv[15],'4125');
     assert.equal(h.writes,0);assert.match(h.nodes.get('status').textContent,/Recebendo/);
   }
 });
@@ -149,5 +148,5 @@ test('ASCII telemetry works when the browser has no TextDecoder', async()=>{
   const line=sentence('28.999');
   h.csv(line.slice(0,37)); h.csv(line.slice(37));
   assert.equal(h.nodes.get('v8').textContent,'28');
-  assert.equal(h.nodes.get('v13').textContent,'4125');
+  assert.equal(h.session.csv[15],'4125');
 });
