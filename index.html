@@ -24,20 +24,13 @@
   <div id="status" role="status">JavaScript ainda não iniciou. Se esta mensagem permanecer, confira os bloqueios de scripts no Bluefy e recarregue a página.</div>
   <noscript><p class="warn">JavaScript está desativado. Ative a execução de JavaScript no navegador para conectar por Bluetooth.</p></noscript>
   <div class="grid" id="tiles">
-    <div class="tile"><div class="unit">Carga calculada</div><div class="val" id="v0">—</div><div class="unit">%</div></div>
     <div class="tile"><div class="unit">Carga por tensão</div><div class="val" id="v1">—</div><div class="unit">%</div></div>
     <div class="tile"><div class="unit">Tensão da bateria</div><div class="val" id="v2">—</div><div class="unit">V</div></div>
-    <div class="tile"><div class="unit">Corrente ESC</div><div class="val" id="v3">—</div><div class="unit">A</div></div>
-    <div class="tile"><div class="unit">Potência</div><div class="val" id="v4">—</div><div class="unit">kW</div></div>
     <div class="tile"><div class="unit">RPM</div><div class="val" id="v5">—</div><div class="unit">rpm</div></div>
     <div class="tile"><div class="unit">Acelerador</div><div class="val" id="v6">—</div><div class="unit">%</div></div>
-    <div class="tile"><div class="unit">Potência limite</div><div class="val" id="v7">—</div><div class="unit">%</div></div>
     <div class="tile"><div class="unit">Temperatura motor (NTC)</div><div class="val" id="v8">—</div><div class="unit">°C</div></div>
     <div class="tile"><div class="unit">Temperatura ESC</div><div class="val" id="v9">—</div><div class="unit">°C</div></div>
     <div class="tile"><div class="unit">Estado</div><div class="val" id="v10">—</div><div class="unit"></div></div>
-    <div class="tile"><div class="unit">Temperatura BMS</div><div class="val" id="v11">—</div><div class="unit">°C</div></div>
-    <div class="tile"><div class="unit">Célula mínima</div><div class="val" id="v12">—</div><div class="unit">mV</div></div>
-    <div class="tile"><div class="unit">Célula máxima</div><div class="val" id="v13">—</div><div class="unit">mV</div></div>
   </div>
   <p id="temperature-status" class="warn" role="status">Aguardando leitura do NTC externo.</p>
   <h3>Última mensagem</h3><pre id="raw">Aguardando...</pre>
@@ -66,12 +59,8 @@ const UUID = {
   telemetry: 'd4cf0003-9b9d-4bfd-8f7f-40c6989d3ea9'
 };
 const MAX_AGE = 5000;
-const fields = [
-  ['Carga calculada','%',0],['Carga por tensão','%',1],['Tensão da bateria','V',2],
-  ['Corrente ESC','A',10],['Potência','kW',3],['RPM','rpm',9],['Acelerador','%',4],
-  ['Potência limite','%',6],['Temperatura motor (NTC)','°C',7],['Temperatura ESC','°C',11],
-  ['Estado','',12],['Temperatura BMS','°C',13],['Célula mínima','mV',14],['Célula máxima','mV',15]
-];
+// Display ID and field index in the unchanged XCTOD telemetry sentence.
+const fields = [[1,1],[2,2],[5,9],[6,4],[8,7],[9,11],[10,12]];
 const el = id => document.getElementById(id);
 let session = null, connecting = false;
 const fresh = time => time !== null && Date.now() - time <= MAX_AGE;
@@ -81,7 +70,7 @@ function updateControls() {
   el('disconnect').disabled = !connected;
 }
 function clearReadings() {
-  fields.forEach((_, i) => { el('v'+i).textContent = '—'; });
+  fields.forEach(([id]) => { el('v'+id).textContent = '—'; });
   el('temperature-status').textContent = 'Aguardando leitura do NTC externo.';
 }
 function renderMotor(s) {
@@ -111,8 +100,8 @@ function show(line, s = session) {
   if (a.length !== 17 || a[0] !== '$XCTOD') return false;
   s.csv = a.slice(1); s.last = Date.now();
   el('raw').textContent = line.trim();
-  fields.forEach(([, ,index], i) => {
-    if (index !== 7) el('v'+i).textContent = s.csv[index] === '' ? '—' : s.csv[index];
+  fields.forEach(([id, index]) => {
+    if (index !== 7) el('v'+id).textContent = s.csv[index] === '' ? '—' : s.csv[index];
   });
   el('status').textContent = 'Recebendo telemetria';
   renderMotor(s); updateControls(); return true;
